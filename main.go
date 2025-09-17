@@ -1,10 +1,13 @@
 package main
 
 import (
-	"fmt"
+	"database/sql"
 	"log"
+	"os"
 
+	_ "github.com/lib/pq"
 	"github.com/zrtgzrtg/gatorcli/internal/config"
+	"github.com/zrtgzrtg/gatorcli/internal/database"
 )
 
 func main() {
@@ -12,14 +15,39 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	err = confi.SetUser("zrtg")
+
+	//open Db connection
+
+	db, err := sql.Open("postgres", confi.Db_url)
 	if err != nil {
 		log.Fatal(err)
 	}
-	conf, err := config.Read()
+	dbQueries := database.New(db)
+
+	statePtr := &state{dbQueries, &confi}
+
+	commands := commands{
+		cMap: make(map[string]func(*state, command) error),
+	}
+	commands.register("login", handlerLogin)
+	commands.register("register", handlerRegister)
+	commands.register("reset", handlerReset)
+	commands.register("users", handlerUsers)
+
+	args := os.Args
+	if len(args) < 2 {
+		log.Fatal("not enough arguments given!")
+	}
+	commandName := args[1]
+	if len(args) > 2 {
+		args = args[2:]
+	} else {
+		args = []string{}
+	}
+
+	err = commands.run(statePtr, command{commandName, args})
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println(conf.Db_url, conf.Current_user_name)
 
 }
