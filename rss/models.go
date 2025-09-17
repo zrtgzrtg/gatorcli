@@ -1,4 +1,4 @@
-package models
+package rss
 
 type RSSFeed struct {
 	Channel struct {

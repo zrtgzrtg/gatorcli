@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/zrtgzrtg/gatorcli/internal/config"
 	"github.com/zrtgzrtg/gatorcli/internal/database"
+	"github.com/zrtgzrtg/gatorcli/rss"
 )
 
 type state struct {
@@ -109,5 +110,14 @@ func handlerUsers(s *state, cmd command) error {
 	for _, p := range printList {
 		fmt.Print(p)
 	}
+	return nil
+}
+func handlerAgg(s *state, cmd command) error {
+	rssFeed, err := rss.FetchFeed(context.Background(), "https://www.wagslane.dev/index.xml")
+	if err != nil {
+		return err
+	}
+	fmt.Println(rssFeed.Channel.Description, rssFeed.Channel.Title, rssFeed.Channel.Link, rssFeed.Channel.Item)
+
 	return nil
 }
