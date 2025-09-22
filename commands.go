@@ -87,6 +87,7 @@ func handlerReset(s *state, cmd command) error {
 	err := s.db.Reset(context.Background())
 	if err != nil {
 		os.Exit(1)
+		return err
 	} else {
 		os.Exit(0)
 	}
@@ -119,5 +120,103 @@ func handlerAgg(s *state, cmd command) error {
 	}
 	fmt.Println(rssFeed.Channel.Description, rssFeed.Channel.Title, rssFeed.Channel.Link, rssFeed.Channel.Item)
 
+	return nil
+}
+func handlerAddFeed(s *state, cmd command) error {
+	user, err := s.db.GetUser(context.Background(), s.cfg.Current_user_name)
+	if err != nil {
+		return err
+	}
+	name := cmd.args[0]
+	url := cmd.args[1]
+
+	time := time.Now()
+	feedID := uuid.New()
+	feed := database.CreateFeedParams{
+		ID:        feedID,
+		CreatedAt: sql.NullTime{time, true},
+		UpdatedAt: sql.NullTime{time, true},
+		Name:      name,
+		Url:       url,
+		UserID:    user.ID,
+	}
+	feedRet, err := s.db.CreateFeed(context.Background(), feed)
+	if err != nil {
+		return err
+	}
+	feedFollowsParams := database.CreateFeedFollowsParams{
+		ID:     uuid.New(),
+		UserID: user.ID,
+		FeedID: feedID,
+	}
+	_, err = s.db.CreateFeedFollows(context.Background(), feedFollowsParams)
+	if err != nil {
+		return err
+	}
+	fmt.Println(feedRet.ID, feedRet.CreatedAt, feedRet.UpdatedAt, feedRet.Name, feedRet.Url, feedRet.UserID)
+	return nil
+}
+func handlerFeeds(s *state, cmd command) error {
+	feeds, err := s.db.GetFeeds(context.Background())
+	if err != nil {
+		return err
+	}
+	for _, feed := range feeds {
+		usr, err := s.db.GetUserById(context.Background(), feed.UserID)
+		if err != nil {
+			return err
+		}
+		fmt.Println(feed.ID, feed.CreatedAt, feed.UpdatedAt, feed.Name, feed.Url, feed.UserID, usr.Name)
+	}
+	return nil
+}
+func handlerFollow(s *state, cmd command) error {
+	usr, err := s.db.GetUser(context.Background(), s.cfg.Current_user_name)
+	if err != nil {
+		return err
+	}
+	usrID := usr.ID
+	url := cmd.args[0]
+	feed, err := s.db.GetFeedByUrl(context.Background(), url)
+	if err != nil {
+		return err
+	}
+	ret, err := s.db.CreateFeedFollows(context.Background(), database.CreateFeedFollowsParams{uuid.New(), usrID, feed.ID})
+	if err != nil {
+		return err
+	}
+	fmt.Println(ret.Username, ret.Feedname)
+	return nil
+}
+func handlerFollowing(s *state, cmd command) error {
+	usr, err := s.db.GetUser(context.Background(), s.cfg.Current_user_name)
+	if err != nil {
+		return err
+	}
+	feedFollows, err := s.db.GetFeedFollowsForUser(context.Background(), usr.ID)
+	if err != nil {
+		return err
+	}
+	for _, feedFollow := range feedFollows {
+		fmt.Println(feedFollow.Feedname)
+	}
+
+	return nil
+}
+func handlerUnfollow(s *state, cmd command) error {
+	usr, err := s.db.GetUser(context.Background(), s.cfg.Current_user_name)
+	if err != nil {
+		return err
+	}
+	feedUrl := cmd.args[0]
+	feed, err := s.db.GetFeedByUrl(context.Background(), feedUrl)
+	if err != nil {
+		return err
+	}
+	delParams := database.DeleteFeedFollowParams{usr.ID, feed.ID}
+	_, err = s.db.DeleteFeedFollow(context.Background(), delParams)
+	if err != nil {
+		return err
+	}
 	return nil
 }
