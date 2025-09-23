@@ -39,6 +39,8 @@ func main() {
 	commands.register("follow", handlerFollow)
 	commands.register("following", handlerFollowing)
 	commands.register("unfollow", handlerUnfollow)
+	commands.register("scrapeFeed", handlerScrapeFeeds)
+	commands.register("browse", handlerBrowse)
 
 	args := os.Args
 	if len(args) < 2 {

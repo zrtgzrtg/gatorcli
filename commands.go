@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -86,6 +88,7 @@ func handlerRegister(s *state, cmd command) error {
 func handlerReset(s *state, cmd command) error {
 	err := s.db.Reset(context.Background())
 	if err != nil {
+		fmt.Println(err)
 		os.Exit(1)
 		return err
 	} else {
@@ -114,17 +117,51 @@ func handlerUsers(s *state, cmd command) error {
 	return nil
 }
 func handlerAgg(s *state, cmd command) error {
-	rssFeed, err := rss.FetchFeed(context.Background(), "https://www.wagslane.dev/index.xml")
+	timeBetweenReqs := cmd.args[0]
+	tim, err := time.ParseDuration(timeBetweenReqs)
 	if err != nil {
 		return err
 	}
-	fmt.Println(rssFeed.Channel.Description, rssFeed.Channel.Title, rssFeed.Channel.Link, rssFeed.Channel.Item)
+	fmt.Printf("Collecting feeds every %v\n", tim)
+	tick := time.NewTicker(tim)
+	for ; ; <-tick.C {
+		feed, err := s.db.GetNextFeedToFetch(context.Background())
+		if err != nil {
+			return err
+		}
+		furl := feed.Url
+		rssFeed, err := rss.FetchFeed(context.Background(), furl)
+		if err != nil {
+			return err
+		}
+		markParams := database.MarkFeedFetchedByIdParams{feed.ID, sql.NullTime{time.Now(), true}}
+		_, err = s.db.MarkFeedFetchedById(context.Background(), markParams)
+		if err != nil {
+			return err
+		}
+		tim := sql.NullTime{time.Now(), true}
+		postParams := database.CreatePostParams{
+			ID:          uuid.New(),
+			CreatedAt:   tim,
+			UpdatedAt:   tim,
+			Title:       rssFeed.Channel.Title,
+			Url:         furl,
+			Description: rssFeed.Channel.Description,
+			PublishedAt: time.Now(),
+			FeedID:      feed.ID,
+		}
+		_, err = s.db.CreatePost(context.Background(), postParams)
+		if !strings.Contains(err.Error(), "unique constraint") {
+			return err
+		}
+	}
 
 	return nil
 }
 func handlerAddFeed(s *state, cmd command) error {
 	user, err := s.db.GetUser(context.Background(), s.cfg.Current_user_name)
 	if err != nil {
+		fmt.Println("a")
 		return err
 	}
 	name := cmd.args[0]
@@ -218,5 +255,46 @@ func handlerUnfollow(s *state, cmd command) error {
 	if err != nil {
 		return err
 	}
+	return nil
+}
+func handlerScrapeFeeds(s *state, cmd command) error {
+	nxtFeed, err := s.db.GetNextFeedToFetch(context.Background())
+	if err != nil {
+		return err
+	}
+	markParams := database.MarkFeedFetchedByIdParams{nxtFeed.ID, sql.NullTime{time.Now(), true}}
+
+	_, err = s.db.MarkFeedFetchedById(context.Background(), markParams)
+	if err != nil {
+		return err
+	}
+	rssFeed, err := rss.FetchFeed(context.Background(), nxtFeed.Url)
+	for _, item := range rssFeed.Channel.Item {
+		fmt.Println(item.Title)
+	}
+
+	return nil
+}
+func handlerBrowse(s *state, cmd command) error {
+	user, err := s.db.GetUser(context.Background(), s.cfg.Current_user_name)
+	if err != nil {
+		return err
+	}
+	lim := 2
+	if len(cmd.args) != 0 {
+		lim, err = strconv.Atoi(cmd.args[0])
+		if err != nil {
+			return err
+		}
+	}
+	getParams := database.GetPostsForUserParams{user.ID, int32(lim)}
+	posts, err := s.db.GetPostsForUser(context.Background(), getParams)
+	if err != nil {
+		return err
+	}
+	for _, post := range posts {
+		fmt.Println(post.Title)
+	}
+
 	return nil
 }
